@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GGPoker Tournament Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root {
+  --bg: #080810; --panel: #0f0f1a; --panel2: #161626;
+  --border: #1e1e35; --border2: #2a2a45;
+  --gold: #f5c842; --gold2: #e6a800;
+  --green: #22d97a; --red: #f04060;
+  --blue: #4f8eff; --purple: #a855f7;
+  --text: #e2e2f0; --muted: #5a5a80; --muted2: #3a3a58;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; }
+body::after { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:9999; opacity:0.4; }
+.app { max-width:1280px; margin:0 auto; padding:0 24px 60px; }
+
+/* HEADER */
+.header { display:flex; align-items:center; justify-content:space-between; padding:24px 0 20px; border-bottom:1px solid var(--border); margin-bottom:24px; }
+.brand { display:flex; align-items:baseline; gap:12px; }
+.brand-title { font-family:'Bebas Neue',sans-serif; font-size:32px; letter-spacing:3px; color:var(--gold); line-height:1; }
+.brand-sub { font-size:11px; color:var(--muted); letter-spacing:3px; text-transform:uppercase; }
+.header-right { display:flex; align-items:center; gap:12px; }
+.pill { background:var(--panel2); border:1px solid var(--border2); border-radius:100px; padding:6px 14px; font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; letter-spacing:1px; transition:all 0.2s; }
+.pill.active { border-color:var(--gold); color:var(--gold); background:rgba(245,200,66,0.08); }
+.clear-btn { background:transparent; border:1px solid var(--border2); color:var(--muted); padding:6px 14px; border-radius:100px; font-size:11px; font-family:'Space Mono',monospace; cursor:pointer; transition:all 0.2s; }
+.clear-btn:hover { border-color:var(--red); color:var(--red); background:rgba(240,64,96,0.08); }
+
+/* DB BAR */
+.db-bar { display:none; align-items:center; gap:8px; background:rgba(245,200,66,0.06); border:1px solid rgba(245,200,66,0.2); border-radius:8px; padding:10px 16px; font-size:11px; color:var(--gold); margin-bottom:16px; font-family:'Space Mono',monospace; }
+.db-bar.show { display:flex; animation:fadeUp 0.3s ease; }
+
+/* TOAST */
+.toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--panel2); border:1px solid var(--border2); border-radius:100px; padding:10px 22px; font-size:12px; font-family:'Space Mono',monospace; color:var(--text); opacity:0; pointer-events:none; transition:all 0.3s ease; white-space:nowrap; z-index:10000; box-shadow:0 8px 32px rgba(0,0,0,0.4); }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.toast.green { border-color:rgba(34,217,122,0.4); color:var(--green); }
+.toast.red { border-color:rgba(240,64,96,0.4); color:var(--red); }
+.toast.gold { border-color:rgba(245,200,66,0.4); color:var(--gold); }
+
+/* DROP ZONE */
+.drop-zone { border:1px dashed var(--border2); border-radius:12px; background:var(--panel); padding:40px; text-align:center; cursor:pointer; transition:all 0.25s; position:relative; overflow:hidden; margin-bottom:24px; }
+.drop-zone::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse at 50% 0%, rgba(245,200,66,0.06) 0%, transparent 70%); opacity:0; transition:opacity 0.3s; }
+.drop-zone:hover,.drop-zone.over { border-color:var(--gold); background:rgba(245,200,66,0.03); }
+.drop-zone:hover::before,.drop-zone.over::before { opacity:1; }
+.drop-icon { font-size:32px; margin-bottom:12px; display:block; }
+.drop-zone h2 { font-family:'Bebas Neue',sans-serif; font-size:20px; letter-spacing:3px; color:var(--text); margin-bottom:6px; }
+.drop-zone p { font-size:10px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+#zipInput { display:none; }
+
+/* PROGRESS */
+.progress-wrap { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 24px; margin-bottom:24px; display:none; }
+.progress-wrap.show { display:block; animation:fadeUp 0.3s ease; }
+.progress-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; font-size:11px; }
+.progress-label { color:var(--text); } .progress-count { color:var(--gold); font-family:'Space Mono',monospace; }
+.bar-track { background:var(--border); border-radius:4px; height:4px; overflow:hidden; margin-bottom:12px; }
+.bar-fill { height:100%; background:linear-gradient(90deg,var(--gold2),var(--gold)); border-radius:4px; width:0%; transition:width 0.2s ease; }
+.progress-filename { font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ERROR */
+.error-bar { background:rgba(240,64,96,0.1); border:1px solid rgba(240,64,96,0.3); border-radius:8px; padding:12px 16px; font-size:12px; color:var(--red); margin-bottom:20px; display:none; }
+.error-bar.show { display:block; }
+
+/* RESULTS */
+#results { display:none; }
+#results.show { display:block; animation:fadeUp 0.4s ease; }
+
+/* FILTER BAR */
+.filter-bar { display:flex; align-items:center; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+.filter-label { font-size:10px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+.filter-group { display:flex; gap:4px; flex-wrap:wrap; }
+.fbtn { background:var(--panel); border:1px solid var(--border2); color:var(--muted); padding:5px 12px; border-radius:100px; font-size:11px; font-family:'Space Mono',monospace; cursor:pointer; transition:all 0.18s; }
+.fbtn:hover { border-color:var(--gold); color:var(--gold); }
+.fbtn.active { background:rgba(245,200,66,0.12); border-color:var(--gold); color:var(--gold); }
+.filter-sep { width:1px; height:20px; background:var(--border2); flex-shrink:0; }
+.date-inputs { display:flex; gap:6px; align-items:center; }
+.date-inputs input { background:var(--panel); border:1px solid var(--border2); color:var(--text); padding:5px 10px; border-radius:6px; font-size:11px; font-family:'Space Mono',monospace; outline:none; }
+.date-inputs input:focus { border-color:var(--gold); }
+.date-inputs span { color:var(--muted); font-size:11px; }
+.reset-btn { background:transparent; border:1px solid var(--border2); color:var(--muted); padding:5px 10px; border-radius:6px; font-size:10px; font-family:'Space Mono',monospace; cursor:pointer; transition:all 0.2s; }
+.reset-btn:hover { border-color:var(--purple); color:var(--purple); }
+
+/* KPI */
+.kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:20px; }
+.kpi { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:18px 18px 16px; position:relative; overflow:hidden; transition:border-color 0.2s; }
+.kpi:hover { border-color:var(--border2); }
+.kpi-accent { position:absolute; top:0; left:0; right:0; height:2px; }
+.kpi-label { font-size:9px; color:var(--muted); letter-spacing:2.5px; text-transform:uppercase; margin-bottom:8px; font-weight:500; }
+.kpi-val { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:1px; line-height:1; margin-bottom:4px; }
+.kpi-sub { font-size:10px; color:var(--muted); }
+
+/* SECTION TABS */
+.section { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 24px; margin-bottom:16px; }
+.section-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+.section-title { font-size:10px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; font-weight:500; }
+.tabs { display:flex; gap:4px; flex-wrap:wrap; }
+.tab { background:transparent; border:1px solid var(--border2); color:var(--muted); padding:5px 12px; border-radius:100px; font-size:10px; font-family:'Space Mono',monospace; cursor:pointer; transition:all 0.18s; }
+.tab:hover { border-color:var(--blue); color:var(--blue); }
+.tab.active { background:rgba(79,142,255,0.12); border-color:var(--blue); color:var(--blue); }
+.chart-wrap { position:relative; }
+
+/* GRID LAYOUTS */
+.grid-2-1 { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px; }
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+.grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:16px; }
+
+/* PLACE BARS */
+.place-bars { display:flex; flex-direction:column; gap:8px; }
+.place-row { display:flex; align-items:center; gap:10px; }
+.place-badge { font-size:10px; color:var(--muted); width:28px; text-align:right; flex-shrink:0; font-family:'Space Mono',monospace; }
+.place-bar-track { flex:1; background:var(--border); border-radius:3px; height:20px; overflow:hidden; }
+.place-bar-fill { height:100%; border-radius:3px; display:flex; align-items:center; padding-left:8px; font-size:10px; font-weight:600; color:#000; min-width:28px; transition:width 0.8s cubic-bezier(.16,1,.3,1); }
+.place-count { font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); width:32px; flex-shrink:0; text-align:right; }
+
+/* TABLE */
+.table-card { background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:16px; }
+.table-header { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid var(--border); }
+.table-wrap { overflow-x:auto; max-height:380px; overflow-y:auto; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+thead th { padding:9px 16px; text-align:left; font-size:9px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; background:var(--panel2); font-weight:400; border-bottom:1px solid var(--border); position:sticky; top:0; z-index:2; }
+tbody td { padding:8px 16px; border-bottom:1px solid rgba(30,30,53,0.6); }
+tbody tr:last-child td { border-bottom:none; }
+tbody tr:hover td { background:rgba(245,200,66,0.025); }
+.place-chip { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; font-size:10px; font-weight:700; font-family:'Space Mono',monospace; }
+.chip-1 { background:rgba(245,200,66,0.2); color:var(--gold); border:1px solid rgba(245,200,66,0.4); }
+.chip-2 { background:rgba(200,200,220,0.12); color:#c0c0d0; border:1px solid rgba(200,200,220,0.3); }
+.chip-3 { background:rgba(176,110,60,0.15); color:#cd7f32; border:1px solid rgba(176,110,60,0.3); }
+.chip-n { background:var(--panel2); color:var(--muted); border:1px solid var(--border2); }
+.mono { font-family:'Space Mono',monospace; }
+
+/* ROI HEATMAP */
+.heatmap-wrap { overflow-x:auto; }
+.heatmap-grid { display:grid; gap:4px; }
+.hm-cell { border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:6px 4px; min-height:52px; font-size:9px; font-family:'Space Mono',monospace; cursor:default; transition:transform 0.15s; }
+.hm-cell:hover { transform:scale(1.06); z-index:2; }
+.hm-label { color:rgba(255,255,255,0.5); margin-bottom:2px; }
+.hm-val { font-weight:700; font-size:11px; }
+
+/* NO DATA */
+.no-data { text-align:center; padding:40px; color:var(--muted); font-size:12px; }
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border2); border-radius:4px; }
+
+@media(max-width:800px){
+  .grid-2-1,.grid-2,.grid-3 { grid-template-columns:1fr; }
+  .filter-bar { gap:8px; }
+}
+
+/* BONUS PANEL */
+.bonus-panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; margin-bottom:16px; overflow:hidden; }
+.bonus-panel-head { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; }
+.bonus-panel-head:hover { background:rgba(255,255,255,0.02); }
+.bonus-toggle-icon { color:var(--muted); font-size:12px; transition:transform 0.2s; }
+.bonus-toggle-icon.open { transform:rotate(180deg); }
+.bonus-body { display:none; padding:20px; }
+.bonus-body.open { display:block; animation:fadeUp 0.2s ease; }
+
+.bonus-form { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:20px; }
+.bonus-field { display:flex; flex-direction:column; gap:5px; }
+.bonus-field label { font-size:9px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+.bonus-field input, .bonus-field select {
+  background:var(--panel2); border:1px solid var(--border2); color:var(--text);
+  padding:7px 12px; border-radius:6px; font-size:12px; font-family:'Space Mono',monospace;
+  outline:none; transition:border-color 0.2s; min-width:130px;
+}
+.bonus-field input:focus, .bonus-field select:focus { border-color:var(--purple); }
+.bonus-field select option { background:var(--panel2); }
+.bonus-add-btn {
+  background:rgba(168,85,247,0.15); border:1px solid rgba(168,85,247,0.4);
+  color:var(--purple); padding:7px 18px; border-radius:6px; font-size:11px;
+  font-family:'Space Mono',monospace; cursor:pointer; transition:all 0.2s; white-space:nowrap;
+}
+.bonus-add-btn:hover { background:rgba(168,85,247,0.25); border-color:var(--purple); }
+
+.bonus-table-wrap { max-height:260px; overflow-y:auto; }
+.bonus-table { width:100%; border-collapse:collapse; font-size:12px; }
+.bonus-table th { padding:8px 12px; text-align:left; font-size:9px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; background:var(--panel2); font-weight:400; border-bottom:1px solid var(--border); position:sticky; top:0; }
+.bonus-table td { padding:8px 12px; border-bottom:1px solid rgba(30,30,53,0.5); }
+.bonus-table tr:last-child td { border-bottom:none; }
+.bonus-table tr:hover td { background:rgba(168,85,247,0.04); }
+.bonus-del-btn { background:transparent; border:1px solid rgba(240,64,96,0.3); color:rgba(240,64,96,0.6); padding:2px 8px; border-radius:4px; font-size:10px; cursor:pointer; transition:all 0.2s; font-family:'Space Mono',monospace; }
+.bonus-del-btn:hover { border-color:var(--red); color:var(--red); background:rgba(240,64,96,0.08); }
+.type-lb { color:var(--gold); }
+.type-rb { color:var(--purple); }
+.type-other { color:var(--blue); }
+.bonus-summary { display:flex; gap:20px; margin-bottom:16px; flex-wrap:wrap; }
+.bonus-sum-item { font-size:11px; font-family:'Space Mono',monospace; }
+.bonus-sum-label { color:var(--muted); margin-right:6px; }
+.bonus-empty { text-align:center; padding:24px; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- HEADER -->
+<div class="header">
+  <div class="brand">
+    <div class="brand-title">TOURNAMENT STATS</div>
+    <div class="brand-sub">GGPoker · Spin&amp;Go</div>
+  </div>
+  <div class="header-right">
+    <div class="pill" id="statusPill">Загрузка…</div>
+    <button class="clear-btn" id="clearBtn">🗑 Очистить</button>
+  </div>
+</div>
+
+<div class="db-bar" id="dbBar">
+  <span>💾</span><span id="dbBarText"></span>
+  <span style="color:var(--muted)">· Перетащите новый ZIP чтобы дополнить</span>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- DROP ZONE -->
+<div class="drop-zone" id="dropZone">
+  <input type="file" id="zipInput" accept=".zip">
+  <span class="drop-icon">🏆</span>
+  <h2 id="dropTitle">ЗАГРУЗИТЕ ZIP АРХИВ</h2>
+  <p>GGPoker · Tournament results · .zip · Данные сохраняются автоматически</p>
+</div>
+
+<!-- PROGRESS -->
+<div class="progress-wrap" id="progressWrap">
+  <div class="progress-top">
+    <span class="progress-label">🗜 Обработка архива…</span>
+    <span class="progress-count" id="progressCount">0 / 0</span>
+  </div>
+  <div class="bar-track"><div class="bar-fill" id="barFill"></div></div>
+  <div class="progress-filename" id="progressFile">—</div>
+</div>
+
+<div class="error-bar" id="errorBar"></div>
+
+<!-- RESULTS -->
+<div id="results">
+
+  <!-- FILTERS -->
+  <div class="filter-bar">
+    <span class="filter-label">Buy-in</span>
+    <div class="filter-group" id="buyinFilters"></div>
+    <div class="filter-sep"></div>
+    <span class="filter-label">Период</span>
+    <div class="date-inputs">
+      <input type="date" id="dateFrom" title="От">
+      <span>→</span>
+      <input type="date" id="dateTo" title="До">
+    </div>
+    <button class="reset-btn" id="resetFilters">× Сбросить</button>
+    <span id="filterCount" style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;margin-left:4px"></span>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <!-- P&L CHART -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">📈 Накопительный P&L</span>
+      <div class="tabs" id="pnlTabs">
+        <button class="tab active" data-mode="all">Все</button>
+        <button class="tab" data-mode="day">По дням</button>
+      </div>
+    </div>
+    <div class="chart-wrap" style="height:240px"><canvas id="chartPnl"></canvas></div>
+  </div>
+
+  <!-- BAR + PLACES -->
+  <div class="grid-2-1">
+    <div class="section" style="margin:0">
+      <div class="section-head">
+        <span class="section-title">💰 P&L по турнирам</span>
+      </div>
+      <div class="chart-wrap" style="height:180px"><canvas id="chartBar"></canvas></div>
+    </div>
+    <div class="section" style="margin:0">
+      <div class="section-head"><span class="section-title">🏅 Места</span></div>
+      <div class="place-bars" id="placeBars"></div>
+    </div>
+  </div>
+  <div style="height:16px"></div>
+
+  <!-- ROI ANALYSIS -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">📊 ROI Анализ</span>
+      <div class="tabs" id="roiTabs">
+        <button class="tab active" data-roi="hour">По часам</button>
+        <button class="tab" data-roi="weekday">По дням недели</button>
+        <button class="tab" data-roi="buyin">По Buy-in</button>
+      </div>
+    </div>
+    <div class="chart-wrap" style="height:200px"><canvas id="chartRoi"></canvas></div>
+  </div>
+
+  <!-- HEATMAP: hour × weekday -->
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">🌡 ROI тепловая карта — Час × День недели</span>
+      <span style="font-size:10px;color:var(--muted)">Игровой день с 11:00</span>
+    </div>
+    <div class="heatmap-wrap" id="heatmapWrap"></div>
+  </div>
+
+  <!-- DONUT + BUYIN PNL -->
+  <div class="grid-2">
+    <div class="section" style="margin:0">
+      <div class="section-head"><span class="section-title">🍕 Prize Pool</span></div>
+      <div class="chart-wrap" style="height:180px"><canvas id="chartDonut"></canvas></div>
+    </div>
+    <div class="section" style="margin:0">
+      <div class="section-head"><span class="section-title">💵 P&L по Buy-in</span></div>
+      <div class="chart-wrap" style="height:180px"><canvas id="chartBuyinPnl"></canvas></div>
+    </div>
+  </div>
+  <div style="height:16px"></div>
+
+  <!-- BONUSES PANEL -->
+  <div class="bonus-panel" id="bonusPanel">
+    <div class="bonus-panel-head" id="bonusPanelHead">
+      <span class="section-title">🎁 Бонусы — Лидерборды &amp; Рейкбэк</span>
+      <span class="bonus-toggle-icon" id="bonusToggleIcon">▼</span>
+    </div>
+    <div class="bonus-body" id="bonusBody">
+
+      <!-- Form -->
+      <div class="bonus-form">
+        <div class="bonus-field">
+          <label>Тип</label>
+          <select id="bonusType">
+            <option value="leaderboard">🏆 Лидерборд</option>
+            <option value="rakeback">💸 Рейкбэк</option>
+            <option value="other">🎁 Другое</option>
+          </select>
+        </div>
+        <div class="bonus-field">
+          <label>Дата</label>
+          <input type="date" id="bonusDate">
+        </div>
+        <div class="bonus-field">
+          <label>Сумма ($)</label>
+          <input type="number" id="bonusAmount" placeholder="0.00" step="0.01" min="0.01">
+        </div>
+        <div class="bonus-field">
+          <label>Комментарий</label>
+          <input type="text" id="bonusNote" placeholder="Необязательно" style="min-width:180px">
+        </div>
+        <button class="bonus-add-btn" id="bonusAddBtn">+ Добавить</button>
+      </div>
+
+      <!-- Summary row -->
+      <div class="bonus-summary" id="bonusSummary"></div>
+
+      <!-- Table -->
+      <div class="bonus-table-wrap">
+        <table class="bonus-table">
+          <thead><tr>
+            <th>#</th><th>Тип</th><th>Дата</th><th>Сумма</th><th>Комментарий</th><th></th>
+          </tr></thead>
+          <tbody id="bonusTableBody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-card">
+    <div class="table-header">
+      <span class="section-title">📋 Все турниры</span>
+      <span id="tableCount" class="mono" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Дата</th><th>Игровой день</th><th>ID</th>
+          <th>Buy-in</th><th>Prize Pool</th><th>Место</th>
+          <th>Выигрыш</th><th>P&L</th><th>Нарастающий</th>
+        </tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /results -->
+</div><!-- /app -->
+
+<script>
+// ══════════════════════════════════════════════════════
+// INDEXED DB
+// ══════════════════════════════════════════════════════
+const DB_NAME='ggpoker_stats', DB_VER=2, STORE='tournaments', BSTORE='bonuses';
+function openDB(){
+  return new Promise((res,rej)=>{
+    const req=indexedDB.open(DB_NAME,DB_VER);
+    req.onupgradeneeded=e=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains(STORE)){
+        const s=db.createObjectStore(STORE,{keyPath:'id'});
+        s.createIndex('dateStr','dateStr');
+      }
+      if(!db.objectStoreNames.contains(BSTORE)){
+        db.createObjectStore(BSTORE,{keyPath:'id',autoIncrement:true});
+      }
+    };
+    req.onsuccess=e=>res(e.target.result);
+    req.onerror=e=>rej(e.target.error);
+  });
+}
+async function dbGetAll(){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const req=db.transaction(STORE,'readonly').objectStore(STORE).getAll();
+    req.onsuccess=()=>res(req.result);
+    req.onerror=()=>rej(req.error);
+  });
+}
+async function dbPutMany(records){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(STORE,'readwrite');
+    const store=tx.objectStore(STORE);
+    let added=0,skipped=0;
+    const p=records.map(r=>new Promise(done=>{
+      const g=store.get(r.id);
+      g.onsuccess=()=>{ if(g.result){skipped++;}else{store.put(r);added++;} done(); };
+      g.onerror=()=>{ skipped++; done(); };
+    }));
+    Promise.all(p).then(()=>{ tx.oncomplete=()=>res({added,skipped}); });
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function dbClear(){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// BONUS DB FUNCTIONS
+// ══════════════════════════════════════════════════════
+async function bonusGetAll(){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const req=db.transaction(BSTORE,'readonly').objectStore(BSTORE).getAll();
+    req.onsuccess=()=>res(req.result);
+    req.onerror=()=>rej(req.error);
+  });
+}
+async function bonusAdd(record){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(BSTORE,'readwrite');
+    const req=tx.objectStore(BSTORE).add(record);
+    req.onsuccess=()=>res(req.result);
+    tx.onerror=()=>rej(tx.error);
+  });
+}
+async function bonusDelete(id){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(BSTORE,'readwrite');
+    tx.objectStore(BSTORE).delete(id);
+    tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+  });
+}
+async function bonusClear(){
+  const db=await openDB();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(BSTORE,'readwrite');
+    tx.objectStore(BSTORE).clear();
+    tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg,type=''){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='toast show '+type;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{ el.className='toast'; },3200);
+}
+
+// ══════════════════════════════════════════════════════
+// DATE HELPERS — игровой день начинается в 11:00
+// ══════════════════════════════════════════════════════
+// "Игровой день" = если час < 11, считаем предыдущим днём
+function gameDay(dateStr){
+  // dateStr: "2026-05-04 22:55:06"
+  if(!dateStr) return '';
+  const d=new Date(dateStr.replace(' ','T'));
+  if(isNaN(d)) return '';
+  if(d.getHours()<11) d.setDate(d.getDate()-1);
+  return d.toISOString().slice(0,10); // "2026-05-04"
+}
+function gameHour(dateStr){
+  if(!dateStr) return null;
+  const d=new Date(dateStr.replace(' ','T'));
+  return isNaN(d)?null:d.getHours();
+}
+function gameWeekday(dateStr){
+  // 0=Пн … 6=Вс (игровой день)
+  if(!dateStr) return null;
+  const d=new Date(dateStr.replace(' ','T'));
+  if(isNaN(d)) return null;
+  if(d.getHours()<11) d.setDate(d.getDate()-1);
+  return (d.getDay()+6)%7; // JS: 0=Sun → shift to Mon=0
+}
+
+// ══════════════════════════════════════════════════════
+// PARSER
+// ══════════════════════════════════════════════════════
+function parseTournamentFile(text,filename){
+  try{
+    const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
+    const idMatch=filename.match(/Tournament #(\d+)/)||lines[0]?.match(/Tournament #(\d+)/);
+    const id=idMatch?idMatch[1]:null;
+    if(!id) return null;
+    const buyin=parseFloat((text.match(/Buy-in:\s*\$?([\d.]+)/i)||[])[1])||0;
+    const prizePool=parseFloat((text.match(/Total Prize Pool:\s*\$?([\d.]+)/i)||[])[1])||0;
+    const dm=text.match(/Tournament started (\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})/i);
+    const dateStr=dm?dm[1].replace(/\//g,'-'):'';
+    const pm=text.match(/You finished in (\d+)(?:st|nd|rd|th) place/i);
+    const place=pm?parseInt(pm[1]):null;
+    const players=parseInt((text.match(/(\d+) Players/i)||[])[1])||0;
+    const wm=text.match(/\d+(?:st|nd|rd|th)\s*:\s*Hero,\s*\$?([\d.]+)/i);
+    const winnings=wm?parseFloat(wm[1]):0;
+    const pnl=Math.round((winnings-buyin)*100)/100;
+    return {id,buyin,prizePool,dateStr,place,players,winnings,pnl};
+  }catch(e){return null;}
+}
+
+// ══════════════════════════════════════════════════════
+// FILTER STATE
+// ══════════════════════════════════════════════════════
+let allTournaments=[];
+let allBonuses=[];      // loaded from DB
+let activeBuyins=new Set();
+let dateFrom='', dateTo='';
+let pnlMode='all';
+let roiMode='hour';
+
+function getFiltered(){
+  return allTournaments.filter(t=>{
+    if(activeBuyins.size>0 && !activeBuyins.has(String(t.buyin.toFixed(2)))) return false;
+    if(dateFrom||dateTo){
+      const gd=gameDay(t.dateStr);
+      if(dateFrom && gd < dateFrom) return false;
+      if(dateTo   && gd > dateTo)   return false;
+    }
+    return true;
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// CHARTS
+// ══════════════════════════════════════════════════════
+let charts={};
+function destroyCharts(){
+  Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});
+  charts={};
+}
+
+const TOOLTIP_BASE={
+  backgroundColor:'#161626',borderColor:'#2a2a45',borderWidth:1,
+  titleColor:'#5a5a80',bodyColor:'#e2e2f0',
+  titleFont:{family:'Space Mono',size:10},
+  bodyFont:{family:'Space Mono',size:12}
+};
+const GRID_COLOR='rgba(30,30,53,0.9)';
+const TICK_STYLE={color:'#5a5a80',font:{family:'Space Mono',size:9}};
+
+function buildPnlChart(ts){
+  const ctx=document.getElementById('chartPnl').getContext('2d');
+  let labels,data,bonusPoints=[];
+
+  // Get bonuses within filter date range
+  const filteredBonuses=allBonuses.filter(b=>{
+    if(dateFrom && b.date<dateFrom) return false;
+    if(dateTo && b.date>dateTo) return false;
+    return true;
+  });
+
+  if(pnlMode==='day'){
+    const byDay={};
+    ts.forEach(t=>{ const d=gameDay(t.dateStr)||'?'; byDay[d]=(byDay[d]||0)+t.pnl; });
+    // add bonuses to days
+    filteredBonuses.forEach(b=>{ byDay[b.date]=(byDay[b.date]||0)+b.amount; });
+    const days=Object.keys(byDay).sort();
+    let cum=0;
+    labels=days;
+    data=days.map(d=>{ cum=Math.round((cum+byDay[d])*100)/100; return cum; });
+    // mark bonus days
+    days.forEach((d,i)=>{
+      const dayBonus=filteredBonuses.filter(b=>b.date===d).reduce((s,b)=>s+b.amount,0);
+      if(dayBonus>0) bonusPoints.push({x:i,y:data[i],amount:dayBonus,date:d});
+    });
+  } else {
+    ts.sort((a,b)=>a.dateStr.localeCompare(b.dateStr));
+    // merge tournaments and bonuses on timeline
+    // bonuses get inserted at their date position
+    let cum=0;
+    data=ts.map(t=>{ cum=Math.round((cum+t.pnl)*100)/100; return cum; });
+    labels=ts.map((_,i)=>i+1);
+    // show bonus total separately (not merged into line, shown as annotation points)
+    // For simplicity just mark last tournament of each bonus day
+    filteredBonuses.forEach(b=>{
+      // find last tournament on or before bonus date
+      let insertIdx=ts.length-1;
+      for(let i=ts.length-1;i>=0;i--){
+        if(gameDay(ts[i].dateStr)<=b.date){ insertIdx=i; break; }
+      }
+      if(insertIdx>=0) bonusPoints.push({x:insertIdx,y:data[insertIdx],amount:b.amount,date:b.date,note:b.note});
+    });
+  }
+
+  const last=data[data.length-1]||0;
+  const color=last>=0?'#22d97a':'#f04060';
+  const g=ctx.createLinearGradient(0,0,0,240);
+  g.addColorStop(0,last>=0?'rgba(34,217,122,0.25)':'rgba(240,64,96,0.25)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+
+  // Bonus scatter: store extra info in a parallel array indexed by bonusPoints order
+  // Use simple numeric index as x so it aligns with the line dataset labels
+  const bonusMeta=bonusPoints; // keep reference for tooltip lookup
+
+  const bonusDataset=bonusPoints.length>0?[{
+    type:'scatter',
+    label:'Бонус',
+    data:bonusPoints.map(p=>({x:p.x, y:p.y})),
+    backgroundColor:'rgba(168,85,247,0.9)',
+    borderColor:'rgba(168,85,247,0.5)',
+    borderWidth:2,
+    pointRadius:9,
+    pointStyle:'triangle',
+    pointHoverRadius:12,
+    yAxisID:'y',
+  }]:[];
+
+  charts.pnl=new Chart(ctx,{
+    type:'line',
+    data:{labels,datasets:[
+      {
+        label:'P&L',
+        data,
+        borderColor:color,backgroundColor:g,
+        borderWidth:2,pointRadius:0,pointHoverRadius:5,
+        pointHoverBackgroundColor:color,
+        fill:true,tension:0.3,
+      },
+      ...bonusDataset
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{
+          display:bonusPoints.length>0,
+          labels:{color:'#5a5a80',font:{family:'Space Mono',size:9},boxWidth:8,
+            filter:item=>item.text==='Бонус'}
+        },
+        tooltip:{...TOOLTIP_BASE,callbacks:{
+          title:items=>{
+            const item=items[0];
+            if(item.dataset.label==='Бонус'){
+              const bp=bonusMeta[item.dataIndex];
+              return `🎁 Бонус · ${bp?bp.date:''}`;
+            }
+            return pnlMode==='day'
+              ? `День: ${labels[item.dataIndex]}`
+              : `Турнир #${item.dataIndex+1}`;
+          },
+          label:item=>{
+            if(item.dataset.label==='Бонус'){
+              const bp=bonusMeta[item.dataIndex];
+              if(!bp) return '';
+              return [
+                ` +$${bp.amount.toFixed(2)}${bp.note?' · '+bp.note:''}`,
+                ` Нарастающий: $${(item.raw.y||0).toFixed(2)}`
+              ];
+            }
+            const v=typeof item.raw==='number'?item.raw:0;
+            return ` ${v>=0?'+':''}$${v.toFixed(2)}`;
+          }
+        }}
+      },
+      scales:{
+        x:{
+          grid:{color:GRID_COLOR},
+          ticks:{...TICK_STYLE,maxTicksLimit:12,callback:(_,i)=>labels[i]}
+        },
+        y:{grid:{color:GRID_COLOR},ticks:{...TICK_STYLE,callback:v=>`$${v.toFixed(2)}`}}
+      }
+    }
+  });
+}
+
+function buildBarChart(ts){
+  ts.sort((a,b)=>a.dateStr.localeCompare(b.dateStr));
+  const ctx=document.getElementById('chartBar').getContext('2d');
+  charts.bar=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:ts.map((_,i)=>i+1),
+      datasets:[{data:ts.map(t=>t.pnl),backgroundColor:ts.map(t=>t.pnl>=0?'rgba(34,217,122,0.7)':'rgba(240,64,96,0.6)'),borderRadius:2,borderSkipped:false}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{...TOOLTIP_BASE,callbacks:{
+        title:items=>`Турнир #${items[0].label}`,
+        label:item=>` ${item.raw>=0?'+':''}$${item.raw.toFixed(2)}`
+      }}},
+      scales:{x:{display:false},y:{grid:{color:GRID_COLOR},ticks:{...TICK_STYLE,callback:v=>`$${v.toFixed(2)}`}}}
+    }
+  });
+}
+
+function buildDonutChart(ts){
+  const groups={};
+  ts.forEach(t=>{ const k=`$${t.prizePool.toFixed(2)}`; groups[k]=(groups[k]||0)+1; });
+  const labels=Object.keys(groups).sort();
+  const palette=['#f5c842','#22d97a','#4f8eff','#a855f7','#f04060','#fb923c'];
+  const ctx=document.getElementById('chartDonut').getContext('2d');
+  charts.donut=new Chart(ctx,{
+    type:'doughnut',
+    data:{labels,datasets:[{data:labels.map(k=>groups[k]),backgroundColor:palette.slice(0,labels.length),borderWidth:2,borderColor:'#0f0f1a'}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{
+      legend:{position:'right',labels:{color:'#5a5a80',font:{family:'Space Mono',size:10},boxWidth:10,padding:10}},
+      tooltip:{...TOOLTIP_BASE,callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed} турниров`}}
+    }}
+  });
+}
+
+function buildBuyinPnlChart(ts){
+  const groups={};
+  ts.forEach(t=>{
+    const k=`$${t.buyin.toFixed(2)}`;
+    if(!groups[k]) groups[k]={pnl:0,buyin:0,count:0};
+    groups[k].pnl+=t.pnl; groups[k].buyin+=t.buyin; groups[k].count++;
+  });
+  const labels=Object.keys(groups).sort((a,b)=>parseFloat(a.slice(1))-parseFloat(b.slice(1)));
+  const rois=labels.map(k=>groups[k].buyin>0?Math.round(groups[k].pnl/groups[k].buyin*1000)/10:0);
+  const pnls=labels.map(k=>Math.round(groups[k].pnl*100)/100);
+  const ctx=document.getElementById('chartBuyinPnl').getContext('2d');
+  charts.buyinPnl=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        {label:'P&L $',data:pnls,backgroundColor:pnls.map(v=>v>=0?'rgba(34,217,122,0.7)':'rgba(240,64,96,0.6)'),borderRadius:3,yAxisID:'y'},
+        {label:'ROI %',data:rois,type:'line',borderColor:'#f5c842',backgroundColor:'transparent',borderWidth:2,pointRadius:4,pointBackgroundColor:'#f5c842',yAxisID:'y2'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#5a5a80',font:{family:'Space Mono',size:9},boxWidth:8}},tooltip:{...TOOLTIP_BASE,callbacks:{
+        label:item=>item.datasetIndex===0?` P&L: ${item.raw>=0?'+':''}$${item.raw.toFixed(2)}`:`ROI: ${item.raw}%`
+      }}},
+      scales:{
+        x:{grid:{color:GRID_COLOR},ticks:{...TICK_STYLE}},
+        y:{grid:{color:GRID_COLOR},ticks:{...TICK_STYLE,callback:v=>`$${v.toFixed(2)}`}},
+        y2:{position:'right',grid:{display:false},ticks:{...TICK_STYLE,callback:v=>`${v}%`}}
+      }
+    }
+  });
+}
+
+// ── ROI Chart (hour / weekday / buyin) ─────────────────────────────
+function buildRoiChart(ts){
+  const ctx=document.getElementById('chartRoi').getContext('2d');
+
+  const WEEK=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  let labels,groups={};
+
+  if(roiMode==='hour'){
+    for(let h=0;h<24;h++) groups[h]={pnl:0,buyin:0,count:0};
+    ts.forEach(t=>{ const h=gameHour(t.dateStr); if(h!==null){ groups[h].pnl+=t.pnl; groups[h].buyin+=t.buyin; groups[h].count++; }});
+    // Reorder starting at 11
+    const hours=[...Array(24).keys()].map(i=>(i+11)%24);
+    labels=hours.map(h=>`${String(h).padStart(2,'0')}:00`);
+    var rois=hours.map(h=>groups[h].buyin>0?Math.round(groups[h].pnl/groups[h].buyin*1000)/10:0);
+    var counts=hours.map(h=>groups[h].count);
+  } else if(roiMode==='weekday'){
+    for(let d=0;d<7;d++) groups[d]={pnl:0,buyin:0,count:0};
+    ts.forEach(t=>{ const d=gameWeekday(t.dateStr); if(d!==null){ groups[d].pnl+=t.pnl; groups[d].buyin+=t.buyin; groups[d].count++; }});
+    labels=WEEK;
+    var rois=[0,1,2,3,4,5,6].map(d=>groups[d].buyin>0?Math.round(groups[d].pnl/groups[d].buyin*1000)/10:0);
+    var counts=[0,1,2,3,4,5,6].map(d=>groups[d].count);
+  } else { // buyin
+    ts.forEach(t=>{ const k=`$${t.buyin.toFixed(2)}`; if(!groups[k]) groups[k]={pnl:0,buyin:0,count:0}; groups[k].pnl+=t.pnl; groups[k].buyin+=t.buyin; groups[k].count++; });
+    labels=Object.keys(groups).sort((a,b)=>parseFloat(a.slice(1))-parseFloat(b.slice(1)));
+    var rois=labels.map(k=>groups[k].buyin>0?Math.round(groups[k].pnl/groups[k].buyin*1000)/10:0);
+    var counts=labels.map(k=>groups[k].count);
+  }
+
+  charts.roi=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        {label:'ROI %',data:rois,backgroundColor:rois.map(v=>v>=0?'rgba(34,217,122,0.7)':'rgba(240,64,96,0.6)'),borderRadius:4,yAxisID:'y'},
+        {label:'Турниров',data:counts,type:'line',borderColor:'rgba(245,200,66,0.6)',backgroundColor:'transparent',borderWidth:1.5,borderDash:[3,3],pointRadius:3,pointBackgroundColor:'#f5c842',yAxisID:'y2'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#5a5a80',font:{family:'Space Mono',size:9},boxWidth:8,padding:12}},tooltip:{...TOOLTIP_BASE,callbacks:{
+        label:item=>item.datasetIndex===0?` ROI: ${item.raw}%`:` Турниров: ${item.raw}`
+      }}},
+      scales:{
+        x:{grid:{color:GRID_COLOR},ticks:{...TICK_STYLE}},
+        y:{grid:{color:GRID_COLOR},ticks:{...TICK_STYLE,callback:v=>`${v}%`}},
+        y2:{position:'right',grid:{display:false},ticks:{...TICK_STYLE}}
+      }
+    }
+  });
+}
+
+// ── Heatmap: hour (rows) × weekday (cols) ──────────────────────────
+function buildHeatmap(ts){
+  const WEEK=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  // hour ordered from 11
+  const HOURS=[...Array(24).keys()].map(i=>(i+11)%24);
+
+  // aggregate
+  const data={}; // data[h][d] = {pnl,buyin,count}
+  HOURS.forEach(h=>{ data[h]={}; for(let d=0;d<7;d++) data[h][d]={pnl:0,buyin:0,count:0}; });
+  ts.forEach(t=>{
+    const h=gameHour(t.dateStr), d=gameWeekday(t.dateStr);
+    if(h!==null&&d!==null){ data[h][d].pnl+=t.pnl; data[h][d].buyin+=t.buyin; data[h][d].count++; }
+  });
+
+  // find range
+  const rois=[];
+  HOURS.forEach(h=>{ for(let d=0;d<7;d++){ const g=data[h][d]; if(g.count>0&&g.buyin>0) rois.push(g.pnl/g.buyin*100); }});
+  const maxAbs=rois.length?Math.max(1,...rois.map(Math.abs)):1;
+
+  function roiColor(roi,count){
+    if(count===0) return '#1a1a2a';
+    const t=Math.min(Math.abs(roi)/maxAbs,1);
+    if(roi>=0){
+      const r=Math.round(34+(217-34)*t), g=Math.round(217+(255-217)*(1-t)), b=Math.round(122+(80-122)*(1-t));
+      return `rgba(${r},${g},${b},0.85)`;
+    } else {
+      const r=Math.round(240), g2=Math.round(64*(1-t)), b2=Math.round(96*(1-t));
+      return `rgba(${r},${g2},${b2},0.85)`;
+    }
+  }
+
+  const wrap=document.getElementById('heatmapWrap');
+  // build table-style grid
+  let html='<div style="display:grid;grid-template-columns:40px repeat(7,1fr);gap:3px;min-width:400px">';
+  // header row
+  html+='<div></div>';
+  WEEK.forEach(d=>{ html+=`<div style="text-align:center;font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;padding:4px 0;">${d}</div>`; });
+
+  HOURS.forEach(h=>{
+    html+=`<div style="display:flex;align-items:center;justify-content:flex-end;font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;padding-right:6px">${String(h).padStart(2,'0')}</div>`;
+    for(let d=0;d<7;d++){
+      const g=data[h][d];
+      const roi=g.buyin>0?Math.round(g.pnl/g.buyin*1000)/10:0;
+      const bg=roiColor(roi,g.count);
+      const textColor=g.count===0?'#2a2a45':'rgba(0,0,0,0.85)';
+      const tip=g.count>0?`ROI:${roi}% (${g.count})`:'';
+      html+=`<div class="hm-cell" style="background:${bg};min-height:44px" title="${tip}">
+        <div class="hm-label" style="color:${textColor};opacity:0.7">${g.count||''}</div>
+        <div class="hm-val" style="color:${textColor}">${g.count>0?(roi>=0?'+':'')+roi+'%':''}</div>
+      </div>`;
+    }
+  });
+  html+='</div>';
+  wrap.innerHTML=html;
+}
+
+function buildPlaceBars(ts){
+  const counts={};
+  ts.forEach(t=>{ if(t.place!==null) counts[t.place]=(counts[t.place]||0)+1; });
+  const places=Object.keys(counts).map(Number).sort((a,b)=>a-b);
+  const max=Math.max(...Object.values(counts),1);
+  const placeColors={1:'#f5c842',2:'#c0c0d0',3:'#cd7f32'};
+  document.getElementById('placeBars').innerHTML=places.map(p=>{
+    const count=counts[p];
+    const pct=(count/max*100).toFixed(1);
+    const color=placeColors[p]||'#4f8eff';
+    const label=p===1?'🥇':p===2?'🥈':p===3?'🥉':`${p}th`;
+    return `<div class="place-row">
+      <div class="place-badge">${label}</div>
+      <div class="place-bar-track"><div class="place-bar-fill" style="width:${pct}%;background:${color}">${count}</div></div>
+      <div class="place-count">${Math.round(count/ts.length*100)}%</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// KPI
+// ══════════════════════════════════════════════════════
+function buildKpi(ts){
+  const total=ts.length;
+  if(!total){ document.getElementById('kpiRow').innerHTML='<div class="no-data">Нет данных по выбранным фильтрам</div>'; return; }
+  const totalBuyin=Math.round(ts.reduce((s,t)=>s+t.buyin,0)*100)/100;
+  const totalWon=Math.round(ts.reduce((s,t)=>s+t.winnings,0)*100)/100;
+  const totalPnl=Math.round((totalWon-totalBuyin)*100)/100;
+  const wins=ts.filter(t=>t.place===1).length;
+  const itm=ts.filter(t=>t.winnings>0).length;
+  const roi=totalBuyin>0?((totalPnl/totalBuyin)*100).toFixed(1):'0';
+  const best=Math.max(...ts.map(t=>t.pnl));
+  const worst=Math.min(...ts.map(t=>t.pnl));
+
+  // Bonuses within filter range
+  const filteredBonuses=allBonuses.filter(b=>{
+    if(dateFrom && b.date<dateFrom) return false;
+    if(dateTo && b.date>dateTo) return false;
+    return true;
+  });
+  const totalBonus=Math.round(filteredBonuses.reduce((s,b)=>s+b.amount,0)*100)/100;
+  const totalWithBonus=Math.round((totalPnl+totalBonus)*100)/100;
+
+  const kpis=[
+    {label:'P&L (турниры)',val:`${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(2)}`,sub:`${total} турниров`,color:totalPnl>=0?'#22d97a':'#f04060',accent:totalPnl>=0?'#22d97a':'#f04060'},
+    {label:'Бонусы',val:`+$${totalBonus.toFixed(2)}`,sub:`${filteredBonuses.length} выплат`,color:'#a855f7',accent:'#a855f7'},
+    {label:'Итого с бонусами',val:`${totalWithBonus>=0?'+':''}$${Math.abs(totalWithBonus).toFixed(2)}`,sub:'P&L + лидерборд + рейкбэк',color:totalWithBonus>=0?'#22d97a':'#f04060',accent:totalWithBonus>=0?'#22d97a':'#f04060'},
+    {label:'ROI',val:`${roi}%`,sub:'Возврат на бай-ин',color:parseFloat(roi)>=0?'#22d97a':'#f04060',accent:'#f5c842'},
+    {label:'ITM',val:`${(itm/total*100).toFixed(1)}%`,sub:`${itm} из ${total}`,color:'#4f8eff',accent:'#4f8eff'},
+    {label:'Победы',val:`${wins}`,sub:`Win rate: ${(wins/total*100).toFixed(1)}%`,color:'#f5c842',accent:'#f5c842'},
+    {label:'Лучший',val:`+$${best.toFixed(2)}`,sub:'Макс выигрыш',color:'#22d97a',accent:'#22d97a'},
+    {label:'Худший',val:`-$${Math.abs(worst).toFixed(2)}`,sub:'Макс потеря',color:'#f04060',accent:'#f04060'},
+  ];
+  document.getElementById('kpiRow').innerHTML=kpis.map(k=>`
+    <div class="kpi">
+      <div class="kpi-accent" style="background:${k.accent}"></div>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-val" style="color:${k.color}">${k.val}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// TABLE
+// ══════════════════════════════════════════════════════
+function buildTable(ts){
+  let cum=0;
+  document.getElementById('tableBody').innerHTML=ts.map((t,i)=>{
+    cum=Math.round((cum+t.pnl)*100)/100;
+    const pc=t.place===1?'chip-1':t.place===2?'chip-2':t.place===3?'chip-3':'chip-n';
+    const pnlH=t.pnl>=0?`<span class="mono" style="color:var(--green)">+$${t.pnl.toFixed(2)}</span>`:`<span class="mono" style="color:var(--red)">-$${Math.abs(t.pnl).toFixed(2)}</span>`;
+    const cumH=cum>=0?`<span class="mono" style="color:var(--green)">+$${cum.toFixed(2)}</span>`:`<span class="mono" style="color:var(--red)">-$${Math.abs(cum).toFixed(2)}</span>`;
+    const date=t.dateStr?t.dateStr.slice(0,16):'—';
+    const gd=gameDay(t.dateStr)||'—';
+    return `<tr>
+      <td class="mono" style="color:var(--muted)">${i+1}</td>
+      <td style="color:var(--muted);font-size:11px">${date}</td>
+      <td style="color:var(--muted);font-size:11px">${gd}</td>
+      <td class="mono" style="color:var(--muted);font-size:10px">#${t.id.slice(-8)}</td>
+      <td class="mono" style="color:var(--text)">$${t.buyin.toFixed(2)}</td>
+      <td class="mono" style="color:var(--muted)">$${t.prizePool.toFixed(2)}</td>
+      <td><span class="place-chip ${pc}">${t.place??'?'}</span></td>
+      <td class="mono" style="color:var(--text)">$${t.winnings.toFixed(2)}</td>
+      <td>${pnlH}</td>
+      <td>${cumH}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('tableCount').textContent=`${ts.length} записей`;
+}
+
+// ══════════════════════════════════════════════════════
+// BUILD BUYIN FILTER BUTTONS
+// ══════════════════════════════════════════════════════
+function buildBuyinFilters(){
+  const buyins=[...new Set(allTournaments.map(t=>t.buyin.toFixed(2)))].sort((a,b)=>parseFloat(a)-parseFloat(b));
+  const container=document.getElementById('buyinFilters');
+  container.innerHTML=buyins.map(b=>`<button class="fbtn ${activeBuyins.has(b)?'active':''}" data-buyin="${b}">$${b}</button>`).join('');
+  container.querySelectorAll('.fbtn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const b=btn.dataset.buyin;
+      if(activeBuyins.has(b)) activeBuyins.delete(b); else activeBuyins.add(b);
+      btn.classList.toggle('active');
+      refreshAll();
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// REFRESH — rebuild all charts with current filters
+// ══════════════════════════════════════════════════════
+function refreshAll(){
+  const ts=getFiltered();
+  ts.sort((a,b)=>a.dateStr.localeCompare(b.dateStr));
+
+  // filter count label
+  const total=allTournaments.length;
+  document.getElementById('filterCount').textContent=ts.length<total?`(${ts.length} из ${total})`:`(${total})`;
+
+  destroyCharts();
+  buildKpi(ts);
+  buildPnlChart(ts);
+  buildBarChart(ts);
+  buildDonutChart(ts);
+  buildBuyinPnlChart(ts);
+  buildPlaceBars(ts);
+  buildRoiChart(ts);
+  buildHeatmap(ts);
+  buildTable(ts);
+}
+
+// ══════════════════════════════════════════════════════
+// BONUS UI
+// ══════════════════════════════════════════════════════
+const TYPE_LABELS={leaderboard:'🏆 Лидерборд',rakeback:'💸 Рейкбэк',other:'🎁 Другое'};
+const TYPE_CSS={leaderboard:'type-lb',rakeback:'type-rb',other:'type-other'};
+
+function renderBonusTable(){
+  const tbody=document.getElementById('bonusTableBody');
+  const sorted=[...allBonuses].sort((a,b)=>b.date.localeCompare(a.date));
+
+  if(!sorted.length){
+    tbody.innerHTML=`<tr><td colspan="6"><div class="bonus-empty">Нет записей. Добавьте первый бонус выше.</div></td></tr>`;
+  } else {
+    tbody.innerHTML=sorted.map((b,i)=>`
+      <tr>
+        <td class="mono" style="color:var(--muted)">${sorted.length-i}</td>
+        <td><span class="${TYPE_CSS[b.type]||'type-other'}">${TYPE_LABELS[b.type]||b.type}</span></td>
+        <td class="mono" style="color:var(--muted)">${b.date}</td>
+        <td class="mono" style="color:var(--purple)">+$${b.amount.toFixed(2)}</td>
+        <td style="color:var(--muted);font-size:11px">${b.note||'—'}</td>
+        <td><button class="bonus-del-btn" data-id="${b.id}">✕</button></td>
+      </tr>`).join('');
+
+    tbody.querySelectorAll('.bonus-del-btn').forEach(btn=>{
+      btn.addEventListener('click',async()=>{
+        const id=parseInt(btn.dataset.id);
+        await bonusDelete(id);
+        allBonuses=allBonuses.filter(b=>b.id!==id);
+        renderBonusTable();
+        renderBonusSummary();
+        refreshAll();
+        showToast('🗑 Бонус удалён','red');
+      });
+    });
+  }
+}
+
+function renderBonusSummary(){
+  const lb=allBonuses.filter(b=>b.type==='leaderboard').reduce((s,b)=>s+b.amount,0);
+  const rb=allBonuses.filter(b=>b.type==='rakeback').reduce((s,b)=>s+b.amount,0);
+  const oth=allBonuses.filter(b=>b.type==='other').reduce((s,b)=>s+b.amount,0);
+  const total=lb+rb+oth;
+  document.getElementById('bonusSummary').innerHTML=`
+    <div class="bonus-sum-item"><span class="bonus-sum-label type-lb">Лидерборд:</span><span class="mono" style="color:var(--gold)">$${lb.toFixed(2)}</span></div>
+    <div class="bonus-sum-item"><span class="bonus-sum-label type-rb">Рейкбэк:</span><span class="mono" style="color:var(--purple)">$${rb.toFixed(2)}</span></div>
+    ${oth>0?`<div class="bonus-sum-item"><span class="bonus-sum-label type-other">Другое:</span><span class="mono" style="color:var(--blue)">$${oth.toFixed(2)}</span></div>`:''}
+    <div class="bonus-sum-item" style="border-left:1px solid var(--border2);padding-left:20px"><span class="bonus-sum-label">Итого:</span><span class="mono" style="color:var(--green)">$${total.toFixed(2)}</span></div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER — after loading data
+// ══════════════════════════════════════════════════════
+function render(tournaments){
+  allTournaments=tournaments;
+  allTournaments.sort((a,b)=>a.dateStr.localeCompare(b.dateStr));
+
+  buildBuyinFilters();
+  refreshAll();
+  renderBonusTable();
+  renderBonusSummary();
+
+  document.getElementById('results').classList.add('show');
+  document.getElementById('statusPill').textContent=`${tournaments.length} турниров`;
+  document.getElementById('statusPill').classList.add('active');
+  document.getElementById('dropTitle').textContent='ДОБАВИТЬ ЕЩЁ ZIP';
+
+  const dates=tournaments.map(t=>gameDay(t.dateStr)).filter(Boolean).sort();
+  const from=dates[0]||'—', to=dates[dates.length-1]||'—';
+  document.getElementById('dbBarText').textContent=`${tournaments.length} турниров · ${from} → ${to}`;
+  document.getElementById('dbBar').classList.add('show');
+}
+
+// ══════════════════════════════════════════════════════
+// ZIP PROCESSING
+// ══════════════════════════════════════════════════════
+async function processZip(file){
+  const errorBar=document.getElementById('errorBar');
+  errorBar.classList.remove('show');
+  const pw=document.getElementById('progressWrap');
+  const fill=document.getElementById('barFill');
+  const cnt=document.getElementById('progressCount');
+  const fname=document.getElementById('progressFile');
+  pw.classList.add('show'); fill.style.width='0%';
+
+  let zip;
+  try{ zip=await JSZip.loadAsync(file); }
+  catch(e){ pw.classList.remove('show'); errorBar.textContent='Не удалось открыть ZIP: '+e.message; errorBar.classList.add('show'); return; }
+
+  const txtFiles=Object.values(zip.files).filter(f=>!f.dir&&f.name.toLowerCase().endsWith('.txt'));
+  const total=txtFiles.length;
+  if(!total){ pw.classList.remove('show'); errorBar.textContent='В архиве нет .txt файлов'; errorBar.classList.add('show'); return; }
+  cnt.textContent=`0 / ${total}`;
+
+  const parsed=[]; let done=0;
+  for(const f of txtFiles){
+    try{
+      const text=await f.async('text');
+      const name=f.name.split('/').pop();
+      const t=parseTournamentFile(text,name);
+      if(t) parsed.push(t);
+      done++;
+      fill.style.width=Math.round(done/total*100)+'%';
+      cnt.textContent=`${done} / ${total}`;
+      fname.textContent=name;
+    }catch(e){}
+  }
+  await new Promise(r=>setTimeout(r,300));
+  pw.classList.remove('show');
+
+  if(!parsed.length){ errorBar.textContent='Не удалось распознать ни одного турнира.'; errorBar.classList.add('show'); return; }
+
+  const {added,skipped}=await dbPutMany(parsed);
+  if(skipped>0&&added>0) showToast(`✅ Добавлено ${added} · ⏭ Дублей пропущено: ${skipped}`,'green');
+  else if(added>0) showToast(`✅ Добавлено ${added} новых турниров`,'green');
+  else showToast(`⏭ Все ${skipped} уже в базе`,'gold');
+
+  const all=await dbGetAll();
+  render(all);
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+async function init(){
+  try{
+    const [all, bonuses]=await Promise.all([dbGetAll(), bonusGetAll()]);
+    allBonuses=bonuses;
+    // Set today as default date for bonus form
+    document.getElementById('bonusDate').value=new Date().toISOString().slice(0,10);
+    if(all.length>0) render(all);
+    else {
+      document.getElementById('statusPill').textContent='Нет данных';
+      // Still show bonus panel if there are bonuses
+      if(bonuses.length>0){
+        document.getElementById('results').classList.add('show');
+        renderBonusTable();
+        renderBonusSummary();
+      }
+    }
+  }catch(e){ document.getElementById('statusPill').textContent='Нет данных'; }
+}
+
+// ══════════════════════════════════════════════════════
+// EVENTS
+// ══════════════════════════════════════════════════════
+const dropZone=document.getElementById('dropZone');
+const zipInput=document.getElementById('zipInput');
+dropZone.addEventListener('click',()=>zipInput.click());
+zipInput.addEventListener('change',e=>{ if(e.target.files[0]){processZip(e.target.files[0]); e.target.value='';} });
+dropZone.addEventListener('dragover',e=>{ e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('over'));
+dropZone.addEventListener('drop',e=>{ e.preventDefault(); dropZone.classList.remove('over'); if(e.dataTransfer.files[0]) processZip(e.dataTransfer.files[0]); });
+
+document.getElementById('clearBtn').addEventListener('click',async()=>{
+  if(!confirm('Удалить все данные, включая бонусы?')) return;
+  await Promise.all([dbClear(), bonusClear()]);
+  allTournaments=[]; allBonuses=[];
+  destroyCharts();
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('statusPill').textContent='Нет данных';
+  document.getElementById('statusPill').classList.remove('active');
+  document.getElementById('dbBar').classList.remove('show');
+  document.getElementById('dropTitle').textContent='ЗАГРУЗИТЕ ZIP АРХИВ';
+  showToast('🗑 База очищена','red');
+});
+
+document.getElementById('resetFilters').addEventListener('click',()=>{
+  activeBuyins.clear();
+  dateFrom=''; dateTo='';
+  document.getElementById('dateFrom').value='';
+  document.getElementById('dateTo').value='';
+  document.querySelectorAll('#buyinFilters .fbtn').forEach(b=>b.classList.remove('active'));
+  refreshAll();
+});
+
+document.getElementById('dateFrom').addEventListener('change',e=>{ dateFrom=e.target.value; refreshAll(); });
+document.getElementById('dateTo').addEventListener('change',e=>{ dateTo=e.target.value; refreshAll(); });
+
+// P&L tabs
+document.getElementById('pnlTabs').addEventListener('click',e=>{
+  const btn=e.target.closest('.tab'); if(!btn) return;
+  document.querySelectorAll('#pnlTabs .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  pnlMode=btn.dataset.mode;
+  if(charts.pnl){ try{charts.pnl.destroy();}catch(e){} delete charts.pnl; }
+  buildPnlChart(getFiltered().sort((a,b)=>a.dateStr.localeCompare(b.dateStr)));
+});
+
+// ROI tabs
+document.getElementById('roiTabs').addEventListener('click',e=>{
+  const btn=e.target.closest('.tab'); if(!btn) return;
+  document.querySelectorAll('#roiTabs .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  roiMode=btn.dataset.roi;
+  if(charts.roi){ try{charts.roi.destroy();}catch(e){} delete charts.roi; }
+  buildRoiChart(getFiltered());
+});
+
+// Bonus panel toggle
+document.getElementById('bonusPanelHead').addEventListener('click',()=>{
+  const body=document.getElementById('bonusBody');
+  const icon=document.getElementById('bonusToggleIcon');
+  const isOpen=body.classList.contains('open');
+  body.classList.toggle('open',!isOpen);
+  icon.classList.toggle('open',!isOpen);
+});
+
+// Bonus add
+document.getElementById('bonusAddBtn').addEventListener('click',async()=>{
+  const type=document.getElementById('bonusType').value;
+  const date=document.getElementById('bonusDate').value;
+  const amount=parseFloat(document.getElementById('bonusAmount').value);
+  const note=document.getElementById('bonusNote').value.trim();
+
+  if(!date){ showToast('⚠ Укажите дату','red'); return; }
+  if(!amount||amount<=0){ showToast('⚠ Укажите корректную сумму','red'); return; }
+
+  const record={type,date,amount:Math.round(amount*100)/100,note};
+  const newId=await bonusAdd(record);
+  record.id=newId;
+  allBonuses.push(record);
+
+  // Reset amount and note
+  document.getElementById('bonusAmount').value='';
+  document.getElementById('bonusNote').value='';
+
+  renderBonusTable();
+  renderBonusSummary();
+  refreshAll();
+  showToast(`✅ Бонус +$${record.amount.toFixed(2)} добавлен`,'green');
+
+  // Ensure panel stays open
+  document.getElementById('bonusBody').classList.add('open');
+  document.getElementById('bonusToggleIcon').classList.add('open');
+});
+
+init();
+</script>
+</body>
+</html>
